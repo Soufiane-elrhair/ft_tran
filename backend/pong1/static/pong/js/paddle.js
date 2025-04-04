@@ -296,6 +296,16 @@ const Game = {
         this.ball = Ball.new.call(this, INITIAL_BALL_SPEED);
         this.turn = this._getRandomPlayer();
         this.timer = (new Date()).getTime();
+
+        // Reset paddles
+        this.player1.x = 150;
+        this.player1.y = (this.canvas.height / 2) - (this.player1.height / 2);
+        this.player2.x = this.canvas.width - 150;
+        this.player2.y = (this.canvas.height / 2) - (this.player2.height / 2);
+        if (this.mode === GAME_MODES.MULTIPLAYER) {
+            this.player3.x = (this.canvas.width / 2) - (this.player3.width / 2);
+            this.player3.y = this.canvas.height - 150;
+        }
         
         // New background color
         this.color = this._generateRoundColor();
@@ -402,16 +412,30 @@ const Game = {
     },
     
     resetForTournamentRound: function() {
+        // Reset scores
         this.player1.score = 0;
         this.player2.score = 0;
+        
+        // Completely recreate the paddles
+        this.player1 = Paddle.new.call(this, 'left');
+        this.player2 = Paddle.new.call(this, 'right');
+        
+        // Reset ball with initial speed
         this.ball = Ball.new.call(this, INITIAL_BALL_SPEED);
+        
+        // Reset game state
         this.turn = this._getRandomPlayer();
-        this.timer = (new Date()).getTime();
+        this.timer = Date.now();
         this.color = this._generateRoundColor();
+        this.over = false;
+        this.running = true;
     },
-
     // Update all objects
     update: function() {
+        if (this.state !== GAME_STATES.PLAYING) return;
+    
+        // Only update if game is running and not over
+        if (!this.running || this.over) return;
         if (this.getNameInput){ 
             this.drawNameInput();
             return;
@@ -734,6 +758,28 @@ const Game = {
     },
 
     checkWinCondition: function() {
+        if (!this.running || this.over) return;
+    
+        // Handle non-tournament modes
+        if (this.mode !== GAME_MODES.TOURNAMENT) {
+            if (this.player1.score >= WINNING_SCORE) {
+                this.gameOver(`${this.playerNames[0]} Wins!`);
+                return;
+            }
+            
+            if (this.player2.score >= WINNING_SCORE) {
+                const winnerName = this.mode === GAME_MODES.SINGLE_PLAYER 
+                    ? "Computer" 
+                    : this.playerNames[1];
+                this.gameOver(`${winnerName} Wins!`);
+                return;
+            }
+            
+            if (this.mode === GAME_MODES.MULTIPLAYER && this.player3.score >= WINNING_SCORE) {
+                this.gameOver(`${this.playerNames[2]} Wins!`);
+                return;
+            }
+        }
         if (this.mode === GAME_MODES.TOURNAMENT) {
             if (this.player1.score >= WINNING_SCORE) {
                 this.handleTournamentWin(this.player1);
@@ -758,12 +804,14 @@ const Game = {
         this.over = true;
         this.running = false;
         this.state = GAME_STATES.GAME_OVER;
+        this.winMessage = message;
+        this.winMessageTime = Date.now();
         
         const finalMessage = message
         .replace('undefined', 'Player')
         .replace('undefined', 'Player');
     
-    this.winMessage = finalMessage;
+        this.winMessage = finalMessage;
 
         // Create custom win message based on mode
         if (this.mode === GAME_MODES.SINGLE_PLAYER) {
@@ -800,6 +848,14 @@ const Game = {
         }
         
         this.winMessageTime = (new Date()).getTime();
+        this.player1.move = DIRECTION.IDLE;
+        this.player2.move = DIRECTION.IDLE;
+        if (this.mode === GAME_MODES.MULTIPLAYER) {
+            this.player3.move = DIRECTION.IDLE;
+        }
+        
+        // Force immediate redraw
+        this.draw();
     },
 
     displayWinMessage: function(text) {
@@ -1363,29 +1419,26 @@ const Game = {
     // },
 
     // Add this new reset function:
-    // resetGame: function() {
-    //     // Reset all game state
-    //     this.state = GAME_STATES.PLAYING;
-    //     this.over = false;
-    //     this.showingWinMessage = false;
-    //     this.running = true;
-    //     this.resetp
-        
-    //     // Reset players
-    //     this.player1 = Paddle.new.call(this, 'left');
-    //     this.player2 = Paddle.new.call(this, 'right');
-    //     if (this.mode === GAME_MODES.MULTIPLAYER) {
-    //         this.player3 = Paddle.new.call(this, 'bottom');
-    //     }
-        
-    //     // Reset ball
-    //     this.ball = Ball.new.call(this);
-    //     this.turn = this._getRandomPlayer();
-    //     this.timer = (new Date()).getTime();
-        
-    //     // Reset color
-    //     this.color = this._generateRoundColor();
-    // },
+resetGame: function() {
+    this.over = false;
+    this.running = true;
+    this.state = GAME_STATES.PLAYING;
+    
+    // Reset scores
+    this.player1.score = 0;
+    this.player2.score = 0;
+    if (this.mode === GAME_MODES.MULTIPLAYER) {
+        this.player3.score = 0;
+    }
+    
+    // Reset ball and paddles
+    this._resetBall();
+    this.resetPaddles();
+    
+    // New random turn
+    this.turn = this._getRandomPlayer();
+    this.timer = Date.now();
+},
     
     // Choose a random player to serve
     _getRandomPlayer: function() {
